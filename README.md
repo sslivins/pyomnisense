@@ -1,5 +1,9 @@
 # pyomnisense
 
+![Live Tests](https://github.com/sslivins/pyomnisense/actions/workflows/live_tests.yml/badge.svg)
+![Offline Tests](https://github.com/sslivins/pyomnisense/actions/workflows/offline_tests.yml/badge.svg)
+[![PyPI version](https://badge.fury.io/py/your_package.svg)](https://badge.fury.io/py/your_package)
+
 pyomnisense is a Python library for accessing Omnisense sensor data directly from the omnisense.com website. It supports logging into the service, retrieving site lists, and fetching sensor data.
 
 ## Features
