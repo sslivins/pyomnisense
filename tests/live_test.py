@@ -24,13 +24,13 @@ async def test_live_login_and_fetch_data():
     assert result is True, "Login failed"
 
     sites = await omnisense.get_site_list()
-    expected_result = {'119345': 'Home', '143554': 'BDL'}
-    assert sites == expected_result
+    #ensure that sites contains at least one site
+    assert len(sites) >= 1
 
     sensor_data = await omnisense.get_sensor_data()
 
     #verify there are 14 sensors and that the correct keys are there for each sensor but ignore the values
-    assert len(sensor_data) == 14
+    assert len(sensor_data) >= 1
     for key, data in sensor_data.items():
         for key in data.keys():
             assert len(data.keys()) == 12

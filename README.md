@@ -55,4 +55,17 @@ Replace `"your_username"` and `"your_password"` with your actual Omnisense crede
 ## Testing
 Tests are written using pytest and pytest-asyncio. You can run tests as follows:
 
-pytest
+### Install the test dependancies
+pip install -e .[tests]
+
+### Run offline tests
+_Note: network access not required_
+`pytest -m offline`
+
+## Run live tests 
+_Note: requires internet access, an account on omnisense and the following environment variables to be set:_ OMNISENSE_USERNAME and OMNISENSE_PASSWORD
+`pytest -m live`
+
+## Run all tests
+_Note: See live test note_
+`pytest`
