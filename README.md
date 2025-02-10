@@ -65,14 +65,20 @@ pip install -e .[tests]
 ### Run offline tests
 _Note: network access not required_
 
-`pytest -m offline`
+```bash
+pytest -m offline
+```
 
-## Run live tests 
+### Run live tests 
 _Note: requires internet access, an account on omnisense and the following environment variables to be set:_ OMNISENSE_USERNAME and OMNISENSE_PASSWORD
 
-`pytest -m live`
+```bash
+pytest -m live
+```
 
-## Run all tests
+### Run all tests
 _Note: See live test note_
 
-`pytest`
+```bash
+pytest
+```
