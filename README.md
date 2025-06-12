@@ -17,6 +17,7 @@ Clone the repository and install in editable mode:
 git clone https://github.com/your_username/pyomnisense.git
 cd pyomnisense
 pip install -e .
+playwright install
 ```
 
 ## Install from pypi.org
@@ -55,4 +56,7 @@ Replace `"your_username"` and `"your_password"` with your actual Omnisense crede
 ## Testing
 Tests are written using pytest and pytest-asyncio. You can run tests as follows:
 
+```bash
+pip install -e .[tests]
 pytest
+```

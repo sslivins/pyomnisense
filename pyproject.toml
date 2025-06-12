@@ -22,7 +22,8 @@ classifiers = [
 # Runtime dependencies
 dependencies = [
     "aiohttp>=3.11.12",
-    "beautifulsoup4>=4.13.3"
+    "beautifulsoup4>=4.13.3",
+    "playwright"
 ]
 
 [project.optional-dependencies]
