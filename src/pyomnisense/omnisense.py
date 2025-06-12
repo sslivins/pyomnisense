@@ -22,7 +22,6 @@ class Omnisense:
     def __init__(self): 
         self._username = None
         self._password = None
-        self._session = None
         self._playwright = None
         self._browser = None
         self._page = None        
