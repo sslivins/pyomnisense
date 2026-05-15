@@ -10,117 +10,73 @@ configured with ``quote_cookie=False``:
   once and retry without the caller having to know.
 """
 
-import os
 import pytest
 from aioresponses import aioresponses
 
 from pyomnisense.omnisense import (
+    HOST_URL,
+    LOGIN_URL,
+    SENSOR_LIST_URL,
+    SITE_LIST_URL,
     Omnisense,
     OmnisenseAuthError,
-    LOGIN_URL,
-    SITE_LIST_URL,
-    SENSOR_LIST_URL,
-    HOST_URL,
 )
 
 
-SAMPLES_DIR = os.path.join(os.path.dirname(__file__), "samples")
-
-
-def _load_sample(name: str) -> str:
-    with open(os.path.join(SAMPLES_DIR, name), "r", encoding="utf-8") as f:
-        return f.read()
-
-
-def _mock_successful_login(m: aioresponses, set_cookie: str = "ASP.NET_SessionId=abc123; Path=/; HttpOnly") -> None:
-    """Register a POST /user_login.asp + GET /site_select.asp pair that
-    together represent one successful login round-trip."""
-    m.post(
-        LOGIN_URL,
-        status=302,
-        headers={"Set-Cookie": set_cookie, "Location": "/site_select.asp"},
-        body="",
-    )
-    m.get(
-        f"{HOST_URL}/site_select.asp",
-        status=200,
-        body="Welcome to your dashboard",
-    )
-
-
 @pytest.mark.offline
 @pytest.mark.asyncio
-async def test_session_is_reused_across_calls():
+async def test_session_is_reused_across_calls(
+    logged_in, sample_site_html, sample_sensors_123456
+):
     """Two data calls after one login must not trigger a second login.
 
-    If the implementation accidentally re-logs in, the second POST to
-    LOGIN_URL would have no registered response and aioresponses would
-    raise, failing the test.
+    The ``logged_in`` fixture registers exactly ONE login round-trip; if
+    the client tries to log in again, the second POST to LOGIN_URL has
+    no mock and aioresponses will raise.
     """
-    site_html = _load_sample("site_list.html")
-    sensors_html = _load_sample("sensor_123456.html")
+    omnisense, m = logged_in
+    m.get(SITE_LIST_URL, status=200, body=sample_site_html)
+    m.get(f"{SENSOR_LIST_URL}?siteNbr=123456", status=200, body=sample_sensors_123456)
 
-    with aioresponses() as m:
-        _mock_successful_login(m)
-        # One registration each: if the client tries to fetch them twice
-        # (or, worse, re-login between them), aioresponses will fail.
-        m.get(SITE_LIST_URL, status=200, body=site_html)
-        m.get(f"{SENSOR_LIST_URL}?siteNbr=123456", status=200, body=sensors_html)
+    sites = await omnisense.get_site_list()
+    assert sites == {"123456": "MySite", "654321": "FirstSite"}
 
-        omnisense = Omnisense()
-        assert await omnisense.login("user", "pass") is True
-
-        sites = await omnisense.get_site_list()
-        assert sites == {"123456": "MySite", "654321": "FirstSite"}
-
-        sensors = await omnisense.get_sensor_data("123456")
-        assert "2A000001" in sensors
-        assert sensors["2A000001"]["site_name"] == "MySite"
-
-        await omnisense.close()
+    sensors = await omnisense.get_sensor_data("123456")
+    assert "2A000001" in sensors
+    assert sensors["2A000001"]["site_name"] == "MySite"
 
 
 @pytest.mark.offline
 @pytest.mark.asyncio
-async def test_relogin_on_session_expiry():
+async def test_relogin_on_session_expiry(
+    logged_in, register_login, sample_site_html
+):
     """If a data fetch lands on the login page, the client must re-login
     once and retry transparently."""
-    site_html = _load_sample("site_list.html")
+    omnisense, m = logged_in
 
-    with aioresponses() as m:
-        _mock_successful_login(m)
+    # First GET of the site list "expires": server 302s to the login
+    # page and aiohttp follows the redirect (default behaviour).
+    m.get(SITE_LIST_URL, status=302, headers={"Location": "/user_login.asp"})
+    m.get(
+        f"{HOST_URL}/user_login.asp",
+        status=200,
+        body="<html><form>login form here</form></html>",
+    )
 
-        # First GET of the site list "expires": server redirects to the
-        # login page and aiohttp follows the redirect (default behaviour).
-        m.get(
-            SITE_LIST_URL,
-            status=302,
-            headers={"Location": "/user_login.asp"},
-        )
-        m.get(
-            f"{HOST_URL}/user_login.asp",
-            status=200,
-            body="<html><form>login form here</form></html>",
-        )
+    # Transparent re-login: another POST + dashboard GET pair.
+    register_login(m, set_cookie="ASP.NET_SessionId=def456; Path=/; HttpOnly")
 
-        # Transparent re-login: another POST + dashboard GET pair.
-        _mock_successful_login(m, set_cookie="ASP.NET_SessionId=def456; Path=/; HttpOnly")
+    # Retry of the original data call now succeeds.
+    m.get(SITE_LIST_URL, status=200, body=sample_site_html)
 
-        # Retry of the original data call now succeeds.
-        m.get(SITE_LIST_URL, status=200, body=site_html)
-
-        omnisense = Omnisense()
-        assert await omnisense.login("user", "pass") is True
-
-        sites = await omnisense.get_site_list()
-        assert sites == {"123456": "MySite", "654321": "FirstSite"}
-
-        await omnisense.close()
+    sites = await omnisense.get_site_list()
+    assert sites == {"123456": "MySite", "654321": "FirstSite"}
 
 
 @pytest.mark.offline
 @pytest.mark.asyncio
-async def test_login_replaces_credentials_atomically():
+async def test_login_rejects_partial_credentials():
     """Passing only one of username/password must be a hard error, not
     a silent partial update that re-uses cached credentials of the
     *other* user."""
@@ -134,11 +90,11 @@ async def test_login_replaces_credentials_atomically():
 
 @pytest.mark.offline
 @pytest.mark.asyncio
-async def test_relogin_closes_old_session():
+async def test_relogin_closes_old_session(register_login):
     """Calling login() twice must not leak the first ClientSession."""
     with aioresponses() as m:
-        _mock_successful_login(m)
-        _mock_successful_login(m, set_cookie="ASP.NET_SessionId=def456; Path=/; HttpOnly")
+        register_login(m)
+        register_login(m, set_cookie="ASP.NET_SessionId=def456; Path=/; HttpOnly")
 
         omnisense = Omnisense()
         assert await omnisense.login("user", "pass") is True
@@ -156,11 +112,10 @@ async def test_relogin_closes_old_session():
 
 @pytest.mark.offline
 @pytest.mark.asyncio
-async def test_context_manager_closes_session():
-    """``async with Omnisense()`` should close the session on exit, even
-    when the block raises."""
+async def test_context_manager_closes_session(register_login):
+    """``async with Omnisense()`` should close the session on exit."""
     with aioresponses() as m:
-        _mock_successful_login(m)
+        register_login(m)
 
         async with Omnisense() as omnisense:
             assert await omnisense.login("user", "pass") is True
