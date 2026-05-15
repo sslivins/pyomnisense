@@ -1,50 +1,63 @@
-import pytest
+"""End-to-end test against the real omnisense.com service.
+
+Skipped unless ``OMNISENSE_USERNAME`` / ``OMNISENSE_PASSWORD`` are set
+(typically loaded from a ``.env`` file or supplied by the CI job).
+
+The assertions deliberately avoid account-specific values so that any
+collaborator with valid Omnisense credentials can run this test against
+*their* account and have it pass.
+"""
+
 import os
-from pyomnisense import Omnisense
+
+import pytest
 from dotenv import load_dotenv
 
-# Load environment variables from .env file
+from pyomnisense import Omnisense
+
 load_dotenv()
+
+
+EXPECTED_SENSOR_KEYS = {
+    "description",
+    "last_activity",
+    "status",
+    "temperature",
+    "relative_humidity",
+    "absolute_humidity",
+    "dew_point",
+    "wood_pct",
+    "battery_voltage",
+    "sensor_type",
+    "sensor_id",
+    "site_name",
+}
+
 
 @pytest.mark.live
 @pytest.mark.skipif(
     not os.getenv("OMNISENSE_USERNAME") or not os.getenv("OMNISENSE_PASSWORD"),
-    reason="OMNISENSE_USERNAME or OMNISENSE_PASSWORD environment variable not set"
+    reason="OMNISENSE_USERNAME or OMNISENSE_PASSWORD environment variable not set",
 )
 @pytest.mark.asyncio
 async def test_live_login_and_fetch_data():
-    omnisense = Omnisense()
-    username = os.getenv("OMNISENSE_USERNAME")
-    password = os.getenv("OMNISENSE_PASSWORD")
+    username = os.environ["OMNISENSE_USERNAME"]
+    password = os.environ["OMNISENSE_PASSWORD"]
 
-    assert username is not None, "OMNISENSE_USERNAME is not set"
-    assert password is not None, "OMNISENSE_PASSWORD is not set"
+    async with Omnisense() as omnisense:
+        assert await omnisense.login(username, password) is True, "Login failed"
 
-    result = await omnisense.login(username, password)
-    assert result is True, "Login failed"
+        sites = await omnisense.get_site_list()
+        assert isinstance(sites, dict)
+        assert sites, "Account should have at least one site"
 
-    sites = await omnisense.get_site_list()
-    expected_result = {'119345': 'Home', '143554': 'BDL'}
-    assert sites == expected_result
+        sensor_data = await omnisense.get_sensor_data()
+        assert isinstance(sensor_data, dict)
+        assert sensor_data, "Account should have at least one sensor"
 
-    sensor_data = await omnisense.get_sensor_data()
-
-    #verify there are 14 sensors and that the correct keys are there for each sensor but ignore the values
-    assert len(sensor_data) == 14
-    for key, data in sensor_data.items():
-        for key in data.keys():
-            assert len(data.keys()) == 12
-            assert 'description' in data
-            assert 'last_activity' in data
-            assert 'status' in data
-            assert 'temperature' in data
-            assert 'relative_humidity' in data
-            assert 'absolute_humidity' in data
-            assert 'dew_point' in data
-            assert 'wood_pct' in data
-            assert 'battery_voltage' in data
-            assert 'sensor_type' in data
-            assert 'sensor_id' in data
-            assert 'site_name' in data
-
-    await omnisense.close()
+        for sensor_id, reading in sensor_data.items():
+            assert sensor_id, "sensor_id must be non-empty"
+            assert set(reading.keys()) == EXPECTED_SENSOR_KEYS, (
+                f"sensor {sensor_id} has unexpected key set: "
+                f"{set(reading.keys()) ^ EXPECTED_SENSOR_KEYS}"
+            )
