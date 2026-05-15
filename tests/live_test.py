@@ -9,6 +9,7 @@ collaborator with valid Omnisense credentials can run this test against
 """
 
 import os
+from datetime import datetime
 
 import pytest
 from dotenv import load_dotenv
@@ -31,6 +32,15 @@ EXPECTED_SENSOR_KEYS = {
     "sensor_type",
     "sensor_id",
     "site_name",
+}
+
+NUMERIC_KEYS = {
+    "temperature",
+    "relative_humidity",
+    "absolute_humidity",
+    "dew_point",
+    "wood_pct",
+    "battery_voltage",
 }
 
 
@@ -61,3 +71,20 @@ async def test_live_login_and_fetch_data():
                 f"sensor {sensor_id} has unexpected key set: "
                 f"{set(reading.keys()) ^ EXPECTED_SENSOR_KEYS}"
             )
+
+            for key in NUMERIC_KEYS:
+                value = reading[key]
+                assert value is None or isinstance(value, float), (
+                    f"sensor {sensor_id} field {key!r} should be Optional[float], "
+                    f"got {type(value).__name__}: {value!r}"
+                )
+
+            last_activity = reading["last_activity"]
+            assert last_activity is None or isinstance(last_activity, datetime), (
+                f"sensor {sensor_id} last_activity should be Optional[datetime], "
+                f"got {type(last_activity).__name__}: {last_activity!r}"
+            )
+            if last_activity is not None:
+                assert last_activity.tzinfo is not None, (
+                    f"sensor {sensor_id} last_activity must be tz-aware"
+                )
