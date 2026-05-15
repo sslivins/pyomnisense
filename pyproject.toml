@@ -6,16 +6,19 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "pyomnisense"          
-version = "0.1.3"             
+version = "0.2.0"             
 description = "Python library for accessing Omnisense sensor data from omnisense.com"
 readme = "README.md"          
 license = { text = "MIT" }    
 authors = [
   { name = "Stefan Slivinski", email = "sslivins@gmail.com" }
 ]
-requires-python = ">=3.7"
+requires-python = ">=3.10"
 classifiers = [
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent"
 ]
