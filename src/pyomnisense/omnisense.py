@@ -99,10 +99,6 @@ class Omnisense:
             ),
         }
 
-        # Set to a URL (e.g. "http://127.0.0.1:8888") to route traffic through
-        # a debugging proxy; leave as None for normal operation.
-        self.proxy_url: Optional[str] = None
-
     def _open_session(self) -> None:
         # quote_cookie=False is load-bearing: omnisense.com is a classic ASP
         # site whose Set-Cookie values contain characters ('=', '+') that
@@ -170,7 +166,6 @@ class Omnisense:
         async with self._session.post(
             LOGIN_URL,
             data=payload,
-            proxy=self.proxy_url,
             allow_redirects=False,
         ) as resp:
             _LOGGER.debug("Login POST status: %s", resp.status)
@@ -194,7 +189,7 @@ class Omnisense:
 
         # Follow the redirect. Cookies set on the POST response are now in
         # the jar and will be attached automatically.
-        async with self._session.get(location, proxy=self.proxy_url) as resp:
+        async with self._session.get(location) as resp:
             if resp.status != 200:
                 _LOGGER.error(
                     "Post-login GET %s returned status %s", location, resp.status
@@ -222,7 +217,7 @@ class Omnisense:
         await self._ensure_session()
 
         for attempt in (0, 1):
-            async with self._session.get(url, proxy=self.proxy_url) as resp:
+            async with self._session.get(url) as resp:
                 if resp.status != 200:
                     raise OmnisenseError(
                         f"GET {url} returned status {resp.status}"
