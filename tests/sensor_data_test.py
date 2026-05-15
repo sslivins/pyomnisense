@@ -6,26 +6,34 @@ Each test sets up the *minimum* extra mocks it needs on top of the
 expected projection of ``ALL_SENSORS``.
 """
 
+from datetime import datetime, timezone
+
 import pytest
 
 from pyomnisense.omnisense import SITE_LIST_URL
+
+
+def _ts(s: str) -> datetime:
+    """Helper: parse an ``YY-MM-DD HH:MM:SS`` string as the same UTC
+    timestamp ``Omnisense.get_sensor_data`` will produce."""
+    return datetime.strptime(s, "%y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
 
 
 # Canonical "everything" result, computed by parsing the two sample
 # sensor_*.html files. Individual tests slice this dict to express the
 # expected result of filtering by site or sensor.
 ALL_SENSORS = {
-    "2A000001": {"description": "Dining Room",         "last_activity": "24-12-30 10:57:44", "status": "A", "temperature": 25.1, "relative_humidity": "39.0", "absolute_humidity": "7.7", "dew_point": "10.2", "wood_pct": "7.2",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A000001", "site_name": "MySite"},
-    "2A000002": {"description": "Basement",            "last_activity": "24-12-30 10:59:04", "status": "A", "temperature": 29.2, "relative_humidity": "30.4", "absolute_humidity": "7.7", "dew_point": "10.1", "wood_pct": "6.9",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A000002", "site_name": "MySite"},
-    "2A000003": {"description": "Gateway",             "last_activity": "24-12-22 10:55:33", "status": "A", "temperature": 11.8, "relative_humidity": "78.4", "absolute_humidity": "6.8", "dew_point": "8.3",  "wood_pct": "13.0", "battery_voltage": "3.1", "sensor_type": "S-11",  "sensor_id": "2A000003", "site_name": "MySite"},
-    "2A000004": {"description": "Kitchen",             "last_activity": "24-12-30 10:59:40", "status": "A", "temperature": 24.7, "relative_humidity": "42.1", "absolute_humidity": "8.2", "dew_point": "11.0", "wood_pct": "7.8",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A000004", "site_name": "MySite"},
-    "2A000005": {"description": "Laundry Room",        "last_activity": "24-12-22 10:51:17", "status": "A", "temperature": 14.4, "relative_humidity": "63.6", "absolute_humidity": "6.5", "dew_point": "7.6",  "wood_pct": "13.2", "battery_voltage": "3.2", "sensor_type": "S-11",  "sensor_id": "2A000005", "site_name": "MySite"},
-    "6BC00000": {"description": "<description not set>", "last_activity": "24-12-30 10:59:28", "status": "A", "temperature": 0.0,  "relative_humidity": "26",   "absolute_humidity": "0",   "dew_point": "60",   "wood_pct": "11",   "battery_voltage": "0.0", "sensor_type": "S-100", "sensor_id": "6BC00000", "site_name": "MySite"},
-    "2A001001": {"description": "Dining Room",         "last_activity": "24-12-30 10:57:44", "status": "A", "temperature": 25.1, "relative_humidity": "39.0", "absolute_humidity": "7.7", "dew_point": "10.2", "wood_pct": "7.2",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A001001", "site_name": "FirstSite"},
-    "2A001002": {"description": "Basement",            "last_activity": "24-12-30 10:59:04", "status": "A", "temperature": 29.2, "relative_humidity": "30.4", "absolute_humidity": "7.7", "dew_point": "10.1", "wood_pct": "6.9",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A001002", "site_name": "FirstSite"},
-    "2A001003": {"description": "Gateway",             "last_activity": "24-12-22 10:55:33", "status": "A", "temperature": 11.8, "relative_humidity": "78.4", "absolute_humidity": "6.8", "dew_point": "8.3",  "wood_pct": "13.0", "battery_voltage": "3.1", "sensor_type": "S-11",  "sensor_id": "2A001003", "site_name": "FirstSite"},
-    "2A001004": {"description": "Kitchen",             "last_activity": "24-12-30 10:59:40", "status": "A", "temperature": 24.7, "relative_humidity": "42.1", "absolute_humidity": "8.2", "dew_point": "11.0", "wood_pct": "7.8",  "battery_voltage": "3.4", "sensor_type": "S-11",  "sensor_id": "2A001004", "site_name": "FirstSite"},
-    "2A001005": {"description": "Laundry Room",        "last_activity": "24-12-22 10:51:17", "status": "A", "temperature": 14.4, "relative_humidity": "63.6", "absolute_humidity": "6.5", "dew_point": "7.6",  "wood_pct": "13.2", "battery_voltage": "3.2", "sensor_type": "S-11",  "sensor_id": "2A001005", "site_name": "FirstSite"},
+    "2A000001": {"description": "Dining Room",         "last_activity": _ts("24-12-30 10:57:44"), "status": "A", "temperature": 25.1, "relative_humidity": 39.0, "absolute_humidity": 7.7, "dew_point": 10.2, "wood_pct": 7.2,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A000001", "site_name": "MySite"},
+    "2A000002": {"description": "Basement",            "last_activity": _ts("24-12-30 10:59:04"), "status": "A", "temperature": 29.2, "relative_humidity": 30.4, "absolute_humidity": 7.7, "dew_point": 10.1, "wood_pct": 6.9,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A000002", "site_name": "MySite"},
+    "2A000003": {"description": "Gateway",             "last_activity": _ts("24-12-22 10:55:33"), "status": "A", "temperature": 11.8, "relative_humidity": 78.4, "absolute_humidity": 6.8, "dew_point": 8.3,  "wood_pct": 13.0, "battery_voltage": 3.1, "sensor_type": "S-11",  "sensor_id": "2A000003", "site_name": "MySite"},
+    "2A000004": {"description": "Kitchen",             "last_activity": _ts("24-12-30 10:59:40"), "status": "A", "temperature": 24.7, "relative_humidity": 42.1, "absolute_humidity": 8.2, "dew_point": 11.0, "wood_pct": 7.8,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A000004", "site_name": "MySite"},
+    "2A000005": {"description": "Laundry Room",        "last_activity": _ts("24-12-22 10:51:17"), "status": "A", "temperature": 14.4, "relative_humidity": 63.6, "absolute_humidity": 6.5, "dew_point": 7.6,  "wood_pct": 13.2, "battery_voltage": 3.2, "sensor_type": "S-11",  "sensor_id": "2A000005", "site_name": "MySite"},
+    "6BC00000": {"description": "<description not set>", "last_activity": _ts("24-12-30 10:59:28"), "status": "A", "temperature": 0.0,  "relative_humidity": 26.0, "absolute_humidity": 0.0, "dew_point": 60.0, "wood_pct": 11.0, "battery_voltage": 0.0, "sensor_type": "S-100", "sensor_id": "6BC00000", "site_name": "MySite"},
+    "2A001001": {"description": "Dining Room",         "last_activity": _ts("24-12-30 10:57:44"), "status": "A", "temperature": 25.1, "relative_humidity": 39.0, "absolute_humidity": 7.7, "dew_point": 10.2, "wood_pct": 7.2,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A001001", "site_name": "FirstSite"},
+    "2A001002": {"description": "Basement",            "last_activity": _ts("24-12-30 10:59:04"), "status": "A", "temperature": 29.2, "relative_humidity": 30.4, "absolute_humidity": 7.7, "dew_point": 10.1, "wood_pct": 6.9,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A001002", "site_name": "FirstSite"},
+    "2A001003": {"description": "Gateway",             "last_activity": _ts("24-12-22 10:55:33"), "status": "A", "temperature": 11.8, "relative_humidity": 78.4, "absolute_humidity": 6.8, "dew_point": 8.3,  "wood_pct": 13.0, "battery_voltage": 3.1, "sensor_type": "S-11",  "sensor_id": "2A001003", "site_name": "FirstSite"},
+    "2A001004": {"description": "Kitchen",             "last_activity": _ts("24-12-30 10:59:40"), "status": "A", "temperature": 24.7, "relative_humidity": 42.1, "absolute_humidity": 8.2, "dew_point": 11.0, "wood_pct": 7.8,  "battery_voltage": 3.4, "sensor_type": "S-11",  "sensor_id": "2A001004", "site_name": "FirstSite"},
+    "2A001005": {"description": "Laundry Room",        "last_activity": _ts("24-12-22 10:51:17"), "status": "A", "temperature": 14.4, "relative_humidity": 63.6, "absolute_humidity": 6.5, "dew_point": 7.6,  "wood_pct": 13.2, "battery_voltage": 3.2, "sensor_type": "S-11",  "sensor_id": "2A001005", "site_name": "FirstSite"},
 }
 
 SITE_123456_IDS = {sid for sid, info in ALL_SENSORS.items() if info["site_name"] == "MySite"}

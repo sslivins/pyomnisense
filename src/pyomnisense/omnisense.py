@@ -1,5 +1,6 @@
 import logging
 import re
+from datetime import datetime, timezone
 from typing import Dict, List, Optional, TypedDict, Union
 
 import aiohttp
@@ -29,20 +30,58 @@ class OmnisenseAuthError(OmnisenseError):
 
 
 class SensorReading(TypedDict):
-    """Shape of a single sensor's reading as returned by ``get_sensor_data``."""
+    """Shape of a single sensor's reading as returned by ``get_sensor_data``.
+
+    Numeric fields are parsed to ``float`` (``None`` if the source page
+    showed a non-numeric placeholder), and ``last_activity`` is a
+    timezone-aware ``datetime`` in UTC (``None`` if it could not be
+    parsed). omnisense.com emits all timestamps in UTC.
+    """
 
     description: str
-    last_activity: str
+    last_activity: Optional[datetime]
     status: str
     temperature: Optional[float]
-    relative_humidity: str
-    absolute_humidity: str
-    dew_point: str
-    wood_pct: str
-    battery_voltage: str
+    relative_humidity: Optional[float]
+    absolute_humidity: Optional[float]
+    dew_point: Optional[float]
+    wood_pct: Optional[float]
+    battery_voltage: Optional[float]
     sensor_type: Optional[str]
     sensor_id: str
     site_name: Optional[str]
+
+
+def _parse_float(value: str) -> Optional[float]:
+    """Best-effort ``float`` parse for sensor-reading cells.
+
+    Returns ``None`` instead of raising when the cell holds a non-numeric
+    placeholder (e.g. an empty string for a sensor that hasn't reported
+    that field yet).
+    """
+    if value is None:
+        return None
+    try:
+        return float(value.strip())
+    except (ValueError, AttributeError):
+        return None
+
+
+def _parse_timestamp(value: str) -> Optional[datetime]:
+    """Parse omnisense.com's naive ``YY-MM-DD HH:MM:SS`` timestamps.
+
+    Returns a timezone-aware ``datetime`` in UTC, or ``None`` if the
+    cell could not be parsed. omnisense.com emits server-local times
+    in UTC, so we label the naive parse result as UTC and let
+    downstream consumers convert to local for display.
+    """
+    if value is None:
+        return None
+    try:
+        naive = datetime.strptime(value.strip(), "%y-%m-%d %H:%M:%S")
+    except (ValueError, AttributeError):
+        return None
+    return naive.replace(tzinfo=timezone.utc)
 
 
 class Omnisense:
@@ -205,11 +244,24 @@ class Omnisense:
     async def get_site_list(self) -> dict:
         """Fetch the available sites.
 
+        If no session has been established yet, this implicitly logs in
+        using credentials previously supplied via :meth:`login`. If
+        no credentials are cached, ``OmnisenseAuthError`` is raised.
+
         Returns:
-            dict: ``{site_id: site_name}``. Returns an empty dict on error.
+            dict: ``{site_id: site_name}``. Returns an empty dict on
+            scrape / transport errors.
+
+        Raises:
+            OmnisenseAuthError: if the session is unrecoverable
+                (e.g. cached credentials no longer work).
         """
         try:
             text = await self._fetch_html(SITE_LIST_URL)
+        except OmnisenseAuthError:
+            # Unrecoverable auth failure -- propagate so callers can
+            # distinguish "session is dead" from "this scrape failed".
+            raise
         except Exception as err:
             _LOGGER.error("Error fetching site list: %s", err)
             return {}
@@ -233,22 +285,20 @@ class Omnisense:
             site_ids: ``{site_id: site_name}`` dict, list of site_id strings,
                 or a single site_id string. If omitted, all sites are
                 queried.
+
+        Raises:
+            OmnisenseAuthError: if the session has expired and re-login
+                fails (propagated from :meth:`get_sensor_data`).
         """
-        try:
-            sensor_data = await self.get_sensor_data(site_ids)
-            if not sensor_data:
-                return {}
-            return {
-                sid: {
-                    "description": info["description"],
-                    "sensor_type": info["sensor_type"],
-                    "site_name": info["site_name"],
-                }
-                for sid, info in sensor_data.items()
+        sensor_data = await self.get_sensor_data(site_ids)
+        return {
+            sid: {
+                "description": info["description"],
+                "sensor_type": info["sensor_type"],
+                "site_name": info["site_name"],
             }
-        except Exception as e:
-            _LOGGER.error("Error fetching sensors: %s", e)
-            return {}
+            for sid, info in sensor_data.items()
+        }
 
     async def get_sensor_data(
         self,
@@ -265,11 +315,17 @@ class Omnisense:
                 omitted, all sensors are returned.
 
         Returns:
-            dict keyed by sensor_id, where each value contains
-            ``description``, ``last_activity``, ``status``, ``temperature``,
+            dict keyed by sensor_id. Numeric fields (``temperature``,
             ``relative_humidity``, ``absolute_humidity``, ``dew_point``,
-            ``wood_pct``, ``battery_voltage``, ``sensor_type``,
-            ``sensor_id`` and ``site_name``.
+            ``wood_pct``, ``battery_voltage``) are parsed to ``float``
+            (``None`` on parse failure). ``last_activity`` is a
+            timezone-aware ``datetime`` in UTC (``None`` on parse
+            failure). See :class:`SensorReading` for the full shape.
+
+        Raises:
+            OmnisenseAuthError: if the session has expired and re-login
+                fails. Per-site scrape / transport failures are logged
+                and skipped (other sites still return their data).
         """
         if not site_ids:
             site_ids = await self.get_site_list()
@@ -296,6 +352,11 @@ class Omnisense:
 
             try:
                 text = await self._fetch_html(sensor_page_url)
+            except OmnisenseAuthError:
+                # Unrecoverable auth failure -- propagate so callers can
+                # distinguish "session is dead" from "this one site was
+                # transiently unreachable".
+                raise
             except Exception:
                 _LOGGER.exception(
                     "Error fetching sensor data for site id '%s'.", site_id
@@ -331,10 +392,6 @@ class Omnisense:
                         sid = tds[0].get_text(strip=True)
                         if sensor_ids and sid not in sensor_ids:
                             continue
-                        try:
-                            temperature = float(tds[4].get_text(strip=True))
-                        except ValueError:
-                            temperature = None
 
                         desc = tds[1].get_text(strip=True)
                         if desc == "~click to edit~":
@@ -342,14 +399,14 @@ class Omnisense:
 
                         all_sensors[sid] = {
                             "description": desc,
-                            "last_activity": tds[2].get_text(strip=True),
+                            "last_activity": _parse_timestamp(tds[2].get_text(strip=True)),
                             "status": tds[3].get_text(strip=True),
-                            "temperature": temperature,
-                            "relative_humidity": tds[5].get_text(strip=True),
-                            "absolute_humidity": tds[6].get_text(strip=True),
-                            "dew_point": tds[7].get_text(strip=True),
-                            "wood_pct": tds[8].get_text(strip=True),
-                            "battery_voltage": tds[9].get_text(strip=True),
+                            "temperature": _parse_float(tds[4].get_text(strip=True)),
+                            "relative_humidity": _parse_float(tds[5].get_text(strip=True)),
+                            "absolute_humidity": _parse_float(tds[6].get_text(strip=True)),
+                            "dew_point": _parse_float(tds[7].get_text(strip=True)),
+                            "wood_pct": _parse_float(tds[8].get_text(strip=True)),
+                            "battery_voltage": _parse_float(tds[9].get_text(strip=True)),
                             "sensor_type": sensor_type,
                             "sensor_id": sid,
                             "site_name": site_name,
