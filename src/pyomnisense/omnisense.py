@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, TypedDict, Union
 
 import aiohttp
 from bs4 import BeautifulSoup
@@ -17,6 +17,32 @@ _DEFAULT_TIMEOUT_SECS = 30
 # Path fragment used to detect "the server bounced us back to the login page",
 # i.e. the cached session expired and we need to log in again.
 _LOGIN_PATH = "/user_login.asp"
+
+
+class OmnisenseError(Exception):
+    """Base class for all errors raised by this library."""
+
+
+class OmnisenseAuthError(OmnisenseError):
+    """Raised for authentication / session problems (missing credentials,
+    rejected credentials, expired session that could not be re-established)."""
+
+
+class SensorReading(TypedDict):
+    """Shape of a single sensor's reading as returned by ``get_sensor_data``."""
+
+    description: str
+    last_activity: str
+    status: str
+    temperature: Optional[float]
+    relative_humidity: str
+    absolute_humidity: str
+    dew_point: str
+    wood_pct: str
+    battery_voltage: str
+    sensor_type: Optional[str]
+    sensor_id: str
+    site_name: Optional[str]
 
 
 class Omnisense:
@@ -57,6 +83,12 @@ class Omnisense:
             await self._session.close()
             self._session = None
 
+    async def __aenter__(self) -> "Omnisense":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        await self.close()
+
     async def login(
         self,
         username: Optional[str] = None,
@@ -70,17 +102,17 @@ class Omnisense:
         re-login when the server expires our session).
 
         Returns ``True`` on success, ``False`` if the server rejected the
-        credentials. Raises if no credentials are available, or if only
-        one of username/password is supplied.
+        credentials. Raises ``OmnisenseAuthError`` if no credentials are
+        available, or if only one of username/password is supplied.
         """
         if (username is None) != (password is None):
-            raise Exception("Provide both username and password, or neither.")
+            raise OmnisenseAuthError("Provide both username and password, or neither.")
         if username is not None:
             self._username = username
             self._password = password
         if not self._username or not self._password:
             _LOGGER.error("No username or password provided.")
-            raise Exception("No username or password provided.")
+            raise OmnisenseAuthError("No username or password provided.")
 
         # Always close any prior session before allocating a new one,
         # otherwise repeated login() calls leak ClientSessions / sockets.
@@ -140,7 +172,7 @@ class Omnisense:
     async def _ensure_session(self) -> None:
         if self._session is None or self._session.closed:
             if not await self.login():
-                raise Exception("Login failed.")
+                raise OmnisenseAuthError("Login failed.")
 
     async def _fetch_html(self, url: str) -> str:
         """GET ``url``, transparently re-logging in once if the session expired.
@@ -153,20 +185,22 @@ class Omnisense:
         for attempt in (0, 1):
             async with self._session.get(url, proxy=self.proxy_url) as resp:
                 if resp.status != 200:
-                    raise Exception(f"GET {url} returned status {resp.status}")
+                    raise OmnisenseError(
+                        f"GET {url} returned status {resp.status}"
+                    )
                 final_url = str(resp.url)
                 if _LOGIN_PATH in final_url:
                     if attempt == 0:
                         _LOGGER.info("Session expired; re-logging in.")
                         if not await self.login():
-                            raise Exception("Re-login failed.")
+                            raise OmnisenseAuthError("Re-login failed.")
                         continue
-                    raise Exception(
+                    raise OmnisenseAuthError(
                         "Server kept redirecting to the login page after re-login."
                     )
                 return await resp.text()
 
-        raise Exception("unreachable")
+        raise OmnisenseError("unreachable")
 
     async def get_site_list(self) -> dict:
         """Fetch the available sites.
@@ -191,7 +225,7 @@ class Omnisense:
     async def get_site_sensor_list(
         self,
         site_ids: Union[str, List[str], Dict[str, str]] = None,
-    ) -> Dict[str, Dict[str, str]]:
+    ) -> Dict[str, Dict[str, Optional[str]]]:
         """Fetch sensors for the selected site(s) and project to the
         ``{description, sensor_type, site_name}`` subset.
 
@@ -220,7 +254,7 @@ class Omnisense:
         self,
         site_ids: Union[str, List[str], Dict[str, str]] = None,
         sensor_ids: Union[str, List[str]] = None,
-    ) -> dict:
+    ) -> Dict[str, SensorReading]:
         """Fetch sensor readings for one or more sites.
 
         Args:
@@ -256,7 +290,7 @@ class Omnisense:
         elif isinstance(sensor_ids, str):
             sensor_ids = [sensor_ids]
 
-        all_sensors: Dict[str, dict] = {}
+        all_sensors: Dict[str, SensorReading] = {}
         for site_id in site_ids:
             sensor_page_url = f"{SENSOR_LIST_URL}?siteNbr={site_id}"
 

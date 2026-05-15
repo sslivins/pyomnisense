@@ -1,4 +1,14 @@
-from .omnisense import Omnisense
+from .omnisense import (
+    Omnisense,
+    OmnisenseAuthError,
+    OmnisenseError,
+    SensorReading,
+)
 
-__all__ = ["Omnisense"]
-__version__ = "0.1.3"
+__all__ = [
+    "Omnisense",
+    "OmnisenseAuthError",
+    "OmnisenseError",
+    "SensorReading",
+]
+__version__ = "0.2.0"

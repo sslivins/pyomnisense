@@ -16,6 +16,7 @@ from aioresponses import aioresponses
 
 from pyomnisense.omnisense import (
     Omnisense,
+    OmnisenseAuthError,
     LOGIN_URL,
     SITE_LIST_URL,
     SENSOR_LIST_URL,
@@ -124,9 +125,9 @@ async def test_login_replaces_credentials_atomically():
     a silent partial update that re-uses cached credentials of the
     *other* user."""
     omnisense = Omnisense()
-    with pytest.raises(Exception):
+    with pytest.raises(OmnisenseAuthError):
         await omnisense.login("alice", None)
-    with pytest.raises(Exception):
+    with pytest.raises(OmnisenseAuthError):
         await omnisense.login(None, "secret")
     await omnisense.close()
 
@@ -151,3 +152,20 @@ async def test_relogin_closes_old_session():
         assert first_session.closed, "previous session was leaked across re-login"
 
         await omnisense.close()
+
+
+@pytest.mark.offline
+@pytest.mark.asyncio
+async def test_context_manager_closes_session():
+    """``async with Omnisense()`` should close the session on exit, even
+    when the block raises."""
+    with aioresponses() as m:
+        _mock_successful_login(m)
+
+        async with Omnisense() as omnisense:
+            assert await omnisense.login("user", "pass") is True
+            session = omnisense._session
+            assert session is not None and not session.closed
+
+        assert omnisense._session is None
+        assert session.closed
