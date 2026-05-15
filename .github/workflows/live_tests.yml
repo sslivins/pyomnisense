@@ -3,19 +3,19 @@ name: Live Test
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *'  # Runs daily at midnight
+    - cron: '0 0 * * *'  # daily at midnight UTC
 
 jobs:
   live-test:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.x'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
@@ -26,5 +26,4 @@ jobs:
         env:
           OMNISENSE_USERNAME: ${{ secrets.OMNISENSE_USERNAME }}
           OMNISENSE_PASSWORD: ${{ secrets.OMNISENSE_PASSWORD }}
-        run: |
-          pytest -s -m live
+        run: pytest -s -m live
