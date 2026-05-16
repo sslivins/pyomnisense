@@ -65,3 +65,32 @@ jobs:
 
       - name: Publish package to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  bump-main:
+    needs: build-and-publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          # Push the version bump via the shared VERSION_BUMP_TOKEN PAT
+          # (fine-grained, contents:write). No GITHUB_TOKEN fallback:
+          # fail loudly if the secret is missing rather than silently
+          # downgrading to github-actions[bot] and hiding the misconfig.
+          token: ${{ secrets.VERSION_BUMP_TOKEN }}
+
+      - name: Bump patch version and push
+        run: |
+          set -euo pipefail
+          current=$(python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+          IFS=. read -r major minor patch <<< "$current"
+          next="${major}.${minor}.$((patch + 1))"
+          echo "Bumping: $current -> $next"
+          sed -i -E "0,/^version = \"[^\"]+\"/s//version = \"$next\"/" pyproject.toml
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml
+          git commit -m "chore: bump version to $next [skip ci]" \
+                     -m "Auto-bumped by publish_to_pypi.yml after ${GITHUB_REF_NAME}." \
+                     -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+          git push origin HEAD:main
